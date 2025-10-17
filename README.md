@@ -5,7 +5,7 @@ This is a simple AI chatbot application built with a Python backend and a vanill
 A Demo for this project:
 https://youtu.be/xFoziKcxuvg
 
-## 框架
+## Framework
 
 ### Backend
 
@@ -22,7 +22,7 @@ https://youtu.be/xFoziKcxuvg
 - **CSS3**
 - **JavaScript (ES6+)**: For client-side logic.
 
-## 如何在本地运行
+## How to Run Locally
 
 ### Prerequisites
 
