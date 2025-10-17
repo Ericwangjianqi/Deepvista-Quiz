@@ -2,6 +2,9 @@
 
 This is a simple AI chatbot application built with a Python backend and a vanilla HTML, CSS, and JavaScript frontend.
 
+A Demo for this project:
+https://youtu.be/xFoziKcxuvg
+
 ## 框架
 
 ### Backend
