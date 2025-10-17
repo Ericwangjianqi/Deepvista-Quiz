@@ -64,3 +64,20 @@ This is a simple AI chatbot application built with a Python backend and a vanill
    - Open the `index.html` file directly in your web browser.
 
 You should now be able to interact with the chatbot in your browser.
+
+---
+
+## AI Coder Usage Declaration
+
+This project was developed with the assistance of an AI coding tool.
+
+- **Tool Used:** Cursor
+- **Prompt Record:**
+  - *(copy of the project description), What framework do I need to build to complete such a project, and what are the specific functions of each file*
+  - *What parts do I need to implement for main.py in the backend folder, and what libraries do I need to use?*
+  - *Please help me build a website using HTML in the frontend folder. The website should have a dialogue box between the user and AI, an input area for the user, a send button for clicking, and the ability to see messages sent by the user and AI replies. The design style should be simple and aesthetically pleasing*
+  - *To achieve the connection between the frontend and backend, list the functions I need to implement in script.js*
+
+
+
+
