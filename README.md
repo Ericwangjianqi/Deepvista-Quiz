@@ -80,6 +80,8 @@ This project was developed with the assistance of an AI coding tool.
   - *What parts do I need to implement for main.py in the backend folder, and what libraries do I need to use?*
   - *Please help me build a website using HTML in the frontend folder. The website should have a dialogue box between the user and AI, an input area for the user, a send button for clicking, and the ability to see messages sent by the user and AI replies. The design style should be simple and aesthetically pleasing*
   - *To achieve the connection between the frontend and backend, list the functions I need to implement in script.js*
+  - *(copy of task 2 description), What else should I implement to aacomplish this task for frontend and backend*
+  
 
 
 
