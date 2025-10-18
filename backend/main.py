@@ -6,6 +6,9 @@ from datetime import datetime, timezone
 import os
 import logging
 from dotenv import load_dotenv
+from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
+from xml.etree.ElementTree import ParseError
+import re
 
 # step 2: load the environment variables
 load_dotenv()
@@ -36,6 +39,100 @@ app.add_middleware(
     allow_methods = ["*"],
     allow_headers = ["*"],
 )
+
+# Initialize global variable for video transcript context
+video_transcript_context = ""
+def get_video_id(url: str) -> str | None:
+
+    if not url:
+        return None
+    
+
+    regex = r"(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})"
+    
+    match = re.search(regex, url)
+    if match:
+        return match.group(1)
+    return None
+
+def get_transcript(video_id: str) -> tuple[str | None, str | None]:
+    """
+    Get transcript for a YouTube video
+    Returns: (transcript_text, error_message)
+    
+    Note: youtube-transcript-api v1.0.0+ changed the API:
+    - Old: YouTubeTranscriptApi.get_transcript() (static method)
+    - New: YouTubeTranscriptApi().fetch() (instance method)
+    """
+    try:
+        logger.info(f"Fetching transcript for video ID: {video_id}")
+        
+        # Create instance of YouTubeTranscriptApi (required in v1.0.0+)
+        youtube_api = YouTubeTranscriptApi()
+        
+        # Use fetch() method instead of get_transcript()
+        transcript_data = youtube_api.fetch(video_id)
+        
+        # Extract text from transcript data
+        # Note: In v1.0.0+, items are FetchedTranscriptSnippet objects with .text attribute
+        # NOT dictionaries, so use item.text instead of item['text']
+        transcript_text = " ".join([item.text for item in transcript_data])
+        logger.info(f"Successfully fetched transcript: {len(transcript_text)} characters")
+        return transcript_text, None
+        
+    except ParseError as e:
+        error_msg = (
+            "❌ YouTube API Error (XML Parse Error)\n\n"
+            "This usually means:\n"
+            "• Video doesn't exist or was deleted\n"
+            "• Video is private or age-restricted\n"
+            "• Invalid video ID\n"
+            "• YouTube is blocking the request\n\n"
+            "✅ Solutions:\n"
+            "1. Verify the video link is correct\n"
+            "2. Make sure the video is public\n"
+            "3. Try a different video"
+        )
+        logger.error(f"ParseError for video {video_id}: {str(e)}")
+        return None, error_msg
+        
+    except TranscriptsDisabled as e:
+        error_msg = (
+            "❌ Transcripts Disabled\n\n"
+            "The owner of this video has disabled subtitles.\n"
+            "Please try another video with available subtitles."
+        )
+        logger.error(f"Transcripts disabled for video {video_id}")
+        return None, error_msg
+        
+    except NoTranscriptFound as e:
+        error_msg = (
+            "❌ No Transcript Found\n\n"
+            "This video doesn't have subtitles or captions.\n"
+            "Please try a video with:\n"
+            "• Manual subtitles (CC)\n"
+            "• Auto-generated captions"
+        )
+        logger.error(f"No transcript found for video {video_id}")
+        return None, error_msg
+        
+    except AttributeError as e:
+        # Handle case where fetch method doesn't exist
+        error_msg = (
+            "⚠️ Library Version Mismatch\n\n"
+            f"Error: {str(e)}\n\n"
+            "Please reinstall youtube-transcript-api:\n"
+            "pip uninstall youtube-transcript-api\n"
+            "pip install youtube-transcript-api"
+        )
+        logger.error(f"AttributeError for video {video_id}: {str(e)}")
+        return None, error_msg
+        
+    except Exception as e:
+        error_type = type(e).__name__
+        error_msg = f"❌ Unexpected Error: {error_type}\n\n{str(e)}"
+        logger.error(f"Unexpected error for video {video_id}: {error_type} - {str(e)}")
+        return None, error_msg
 
 # step 4: define the data models
 class HealthResponse(BaseModel):
@@ -155,13 +252,63 @@ async def health_check():
         ai_provider=AI_PROVIDER
     )
 
+class YouTubeRequest(BaseModel):
+    url: str
+
+@app.post("/process-youtube-video", response_model=ChatResponse, tags=['youtube'])
+async def process_youtube_video(request: YouTubeRequest):
+    global video_transcript_context
+    logger.info(f"Received YouTube URL processing request: {request.url}")
+
+    video_id = get_video_id(request.url)
+    if not video_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="Invalid YouTube URL"
+        )
+
+    # Get transcript with detailed error handling
+    transcript, error_msg = get_transcript(video_id)
+    if not transcript:
+        video_transcript_context = ""
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail=error_msg or "Failed to get transcript. Please try another video."
+        )
+
+    video_transcript_context = transcript
+    logger.info(f"Video transcript stored in context ({len(transcript)} characters)")
+
+    # Generate AI summary
+    prompt = f"Analyze the following video transcript and provide a concise 3-4 sentence summary:\n\n---\n{transcript[:4000]}\n\n---\nSummary:"
+
+    try:
+        summary = ai_provider.generate_response(prompt)
+        return ChatResponse(
+            response=f"✅ Video Summary:\n\n{summary}\n\n💬 You can now ask me questions about this video!",
+            timestamp=datetime.now(timezone.utc).isoformat()
+        )
+    except Exception as e:
+        logger.error(f"Error generating video summary: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate video summary: {str(e)}"
+        )
+
 # step 7: define the chat endpoint
 @app.post("/chat", response_model=ChatResponse, tags = ['chat'])
 
 async def chat(request: ChatRequest):
+    global video_transcript_context
     try:
         logger.info(f'Received chat request: {request.message[:50]}...')
-        ai_response = ai_provider.generate_response(request.message)
+        user_message = request.message
+        if video_transcript_context:
+            prompt = f"Please answer the following question based on the video transcript:\n\n---\n{video_transcript_context}\n\n---\n\nQuestion: {user_message}\n\nAnswer:"
+            logger.info("Using video transcript context for answer")
+        else:
+            prompt = user_message
+        ai_response = ai_provider.generate_response(prompt)
         response = ChatResponse(
             response = ai_response,
             timestamp = datetime.now(timezone.utc).isoformat()

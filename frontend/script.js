@@ -7,6 +7,11 @@ const CONFIG = {
     REQUEST_TIMEOUT: 30000, // 30 seconds
 };
 
+function isValidYouTubeUrl(url) {
+    const pattern = /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=[\w-]+|youtu\.be\/[\w-]+)/;
+    return pattern.test(url);
+}
+
 // ===========================================
 // State Management
 // ===========================================
@@ -68,9 +73,13 @@ function handleSendMessage() {
     if (isLoading) {
         return; // Prevent multiple submissions
     }
+    if (isValidYouTubeUrl(message)) {
+        sendYouTubeUrl(message);
+    }
+    else{
+        sendMessage(message);
+    }
     
-    // Send message
-    sendMessage(message);
 }
 
 function updateCharCount() {
@@ -88,6 +97,40 @@ function updateCharCount() {
 // ===========================================
 // Core Functionality
 // ===========================================
+async function sendYouTubeUrl(url) {
+    try {
+        setLoadingState(true);
+        hideError();
+        addMessage(url, 'user');
+        elements.userInput.value = '';
+        updateCharCount();
+        
+        const response = await fetch(`${CONFIG.API_BASE_URL}/process-youtube-video`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ url: url }),
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || 'Failed to process YouTube URL');
+        }
+        
+        const data = await response.json();
+        addMessage(data.response, 'bot', data.timestamp); // 显示摘要
+
+    } 
+    catch (error) {
+        console.error('Error handling YouTube URL:', error);
+        showError(error.message || 'Failed to process YouTube URL');
+    } 
+    finally {
+        setLoadingState(false);
+        elements.userInput.focus();
+    }
+}
 async function sendMessage(message) {
     try {
         // Update UI state
